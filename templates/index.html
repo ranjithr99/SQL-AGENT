@@ -1,0 +1,275 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL AI Assistant</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { padding-top: 20px; }
+        .result-area { min-height: 200px; }
+        .sql-query { 
+            font-family: monospace; 
+            background-color: #f8f9fa; 
+            padding: 10px; 
+            border-radius: 5px; 
+            white-space: pre-wrap;
+        }
+        .table-responsive { margin-top: 15px; overflow-x: auto; }
+        .results-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .results-table th { 
+            background-color: #4a76a8; 
+            color: white;
+            padding: 12px 8px; 
+            text-align: left; 
+            border: 1px solid #e0e0e0;
+            position: sticky;
+            top: 0;
+        }
+        .results-table td { 
+            padding: 10px 8px; 
+            border: 1px solid #e0e0e0; 
+        }
+        .results-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .results-table tr:hover {
+            background-color: #f0f7ff;
+        }
+        .debug-info {
+            margin-top: 20px;
+            font-size: 0.8em;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .table-container {
+            margin-top: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        .sql-error {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 10px 15px;
+            margin: 10px 0;
+            border-radius: 0 4px 4px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">SQL AI Assistant</h1>
+        
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Ask a question about your database
+                    </div>
+                    <div class="card-body">
+                        <div class="input-group mb-3">
+                            <input type="text" id="queryInput" class="form-control" placeholder="e.g., How many customers do we have in each country?">
+                            <button class="btn btn-primary" type="button" id="submitBtn">Submit</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Generated SQL Query
+                    </div>
+                    <div class="card-body">
+                        <div id="sqlQuery" class="sql-query result-area">
+                            <!-- SQL query will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        Results Description
+                    </div>
+                    <div class="card-body">
+                        <div id="results" class="result-area">
+                            <!-- Text results will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        Data Table
+                    </div>
+                    <div class="card-body">
+                        <div id="sqlError" class="sql-error" style="display: none;">
+                            <!-- SQL error will appear here -->
+                        </div>
+                        <div class="table-container">
+                            <div id="tableResults" class="table-responsive">
+                                <!-- Table results will appear here -->
+                            </div>
+                        </div>
+                        <div id="debugContainer">
+                            <!-- Debug info will appear here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Helper function to clean SQL query for display
+        function formatSqlForDisplay(sql) {
+            if (!sql) return '';
+            
+            // Basic SQL formatting for display
+            return sql
+                .replace(/SELECT/gi, 'SELECT')
+                .replace(/FROM/gi, 'FROM')
+                .replace(/WHERE/gi, 'WHERE')
+                .replace(/GROUP BY/gi, 'GROUP BY')
+                .replace(/ORDER BY/gi, 'ORDER BY')
+                .replace(/HAVING/gi, 'HAVING')
+                .replace(/LIMIT/gi, 'LIMIT')
+                .replace(/JOIN/gi, 'JOIN')
+                .replace(/ON/gi, 'ON')
+                .replace(/AND/gi, 'AND')
+                .replace(/OR/gi, 'OR')
+                .replace(/UNION/gi, 'UNION');
+        }
+    
+        document.getElementById('submitBtn').addEventListener('click', async function() {
+            const query = document.getElementById('queryInput').value;
+            if (!query) return;
+            
+            // Clear previous results
+            document.getElementById('sqlQuery').innerHTML = '<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>';
+            document.getElementById('results').innerHTML = '<div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div>';
+            document.getElementById('tableResults').innerHTML = '';
+            document.getElementById('sqlError').style.display = 'none';
+            document.getElementById('debugContainer').innerHTML = '';
+            
+            try {
+                // Send the query
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query }),
+                });
+                
+                const data = await response.json();
+                
+                // Display SQL query if available
+                if (data.query) {
+                    const formattedSql = formatSqlForDisplay(data.query);
+                    let queryHtml = `<pre>${formattedSql}</pre>`;
+                    
+                    // Add note about query adjustment if present
+                    if (data.query_note) {
+                        queryHtml += `<div class="alert alert-info mt-2 small">${data.query_note}</div>`;
+                    }
+                    
+                    document.getElementById('sqlQuery').innerHTML = queryHtml;
+                } else {
+                    document.getElementById('sqlQuery').innerHTML = '<p class="text-muted">No SQL query could be extracted from the response</p>';
+                }
+                
+                // Display text results in the Results Description section
+                if (data.success) {
+                    // Display text results in the top right panel
+                    document.getElementById('results').innerHTML = `<p>${data.result || "No text results available"}</p>`;
+                    
+                    // Check if we have tabular data to display
+                    if (data.table_data && data.table_data.is_tabular) {
+                        // If we have successful table data, hide any error message
+                        document.getElementById('sqlError').style.display = 'none';
+                    }
+                    // Otherwise, if we have a SQL error, show it
+                    else if (data.sql_error) {
+                        const errorElement = document.getElementById('sqlError');
+                        errorElement.innerHTML = `<strong>SQL Execution Error:</strong> ${data.sql_error}`;
+                        errorElement.style.display = 'block';
+                    }
+                    
+                    // Now process the table data if available
+                    if (data.table_data && data.table_data.is_tabular) {
+                        // Create a table for the data
+                        let tableHTML = '<table class="results-table"><thead><tr>';
+                        
+                        // Add table headers
+                        data.table_data.columns.forEach(column => {
+                            tableHTML += `<th>${column}</th>`;
+                        });
+                        
+                        tableHTML += '</tr></thead><tbody>';
+                        
+                        // Add table rows
+                        data.table_data.rows.forEach(row => {
+                            tableHTML += '<tr>';
+                            row.forEach(cell => {
+                                // Handle null values and format the cell
+                                const cellValue = cell === null ? 'NULL' : cell;
+                                tableHTML += `<td>${cellValue}</td>`;
+                            });
+                            tableHTML += '</tr>';
+                        });
+                        
+                        tableHTML += '</tbody></table>';
+                        
+                        document.getElementById('tableResults').innerHTML = tableHTML;
+                    } else if (!data.sql_error) {
+                        // No table and no error means we should indicate no tabular data
+                        document.getElementById('tableResults').innerHTML = '<p class="text-muted text-center my-4">No tabular data available</p>';
+                    }
+                    
+                    // Add debug info
+                    const debugSection = document.createElement('details');
+                    debugSection.className = 'debug-info';
+                    debugSection.innerHTML = `
+                        <summary>Debug Info</summary>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `;
+                    document.getElementById('debugContainer').appendChild(debugSection);
+                } else {
+                    document.getElementById('results').innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                    document.getElementById('tableResults').innerHTML = '';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('sqlQuery').innerHTML = '';
+                document.getElementById('results').innerHTML = `<div class="alert alert-danger">Error connecting to server: ${error.message}</div>`;
+            }
+        });
+        
+        // Allow pressing Enter to submit
+        document.getElementById('queryInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('submitBtn').click();
+            }
+        });
+    </script>
+</body>
+</html>
+    
